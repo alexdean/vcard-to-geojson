@@ -7,7 +7,6 @@ log = Logger.new($stdout)
 log.level = Logger::DEBUG
 
 $db.exec 'truncate table people'
-$db.exec "truncate table locations"
 
 def location_id_for(city, postal_code, region, country)
   id = $db.exec_params(
