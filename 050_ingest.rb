@@ -38,7 +38,7 @@ end
 Vcard::Vcard.decode(File.read('data/050_addresses.vcf')).each do |card|
   address = card.address
   if address.nil?
-    log.error "nil address: #{card.inspect}"
+    log.error "nil address: #{card.name.fullname}"
     next
   end
   log.info card.name.fullname
