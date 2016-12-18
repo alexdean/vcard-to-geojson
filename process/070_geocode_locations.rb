@@ -2,17 +2,16 @@ require 'pathname'
 require 'uri'
 require 'rest-client'
 require 'json'
-require_relative 'lib/db'
+require_relative '../lib/db'
+require_relative '../lib/log'
 
-this_dir = Pathname.new(File.dirname(File.realpath(__FILE__)))
-credentials = JSON.parse(File.read(this_dir.join('credentials.json')))
-google_api_key = credentials.dig('google', 'geocoding', 'apikey')
+google_api_key = Config.google_api_key
 
-db = DB.new
-log = Logger.new($stdout)
-log.level = Logger::DEBUG
+log_level = ARGV[2]
+db = DB.new(log_level: log_level)
+log = Log.factory(log_level: log_level)
 
-RestClient.log = log
+RestClient.log = log if log.level < Logger::INFO
 
 db.exec('select * from locations where geom IS NULL').each do |row|
   # seems to be enough for google geocoder
@@ -23,10 +22,10 @@ db.exec('select * from locations where geom IS NULL').each do |row|
   ]
 
   address_string = address_parts
-                     .map{|s| s.strip.gsub(/[^[[:print:]]]/, '') }
+                     .map{|s| s.strip.gsub(/[^[[:print:]]]/, '') } # remove unprintables
                      .join(',')
 
-  log.info address_string
+  log.debug "Geocoding #{address_string}"
   begin
     response = RestClient.get('https://maps.googleapis.com/maps/api/geocode/json',
       params: {
@@ -44,8 +43,8 @@ db.exec('select * from locations where geom IS NULL').each do |row|
     EOF
     db.exec_params(sql, [lng, lat, db.srid, row['id']])
   rescue => e
-    puts "#{e.message} (e.class)"
-    puts e.backtrace.join("\n")
+    log.error "#{e.message} (e.class)"
+    log.error e.backtrace.join("\n")
     next
   end
 end

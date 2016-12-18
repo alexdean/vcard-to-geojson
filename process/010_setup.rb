@@ -1,10 +1,9 @@
-require_relative 'lib/db'
-require 'logger'
+require_relative '../lib/db'
+require_relative '../lib/log'
 
-log = Logger.new($stdout)
-log.level = Logger::DEBUG
-
-db = DB.new
+log_level = ARGV[2]
+db = DB.new(log_level: log_level)
+log = Log.factory(log_level: log_level)
 
 if !db.table_exists?('locations')
   sql = <<-EOF
@@ -19,7 +18,11 @@ if !db.table_exists?('locations')
   EOF
   db.exec sql
 
-  db.exec "SELECT AddGeometryColumn('locations', 'geom', #{db.srid}, 'POINT', 2, false)"
+  db.exec_params(
+    "SELECT AddGeometryColumn('locations', 'geom', $1::integer, 'POINT', 2, false)",
+    [db.srid]
+  )
+  log.info 'Created table: locations'
 end
 
 if !db.table_exists?('people')
@@ -31,4 +34,6 @@ if !db.table_exists?('people')
     )
   EOF
   db.exec sql
+
+  log.info 'Created table: people'
 end

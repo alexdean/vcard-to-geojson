@@ -1,61 +1,62 @@
 require 'pg'
-require 'logger'
+require 'forwardable'
+require_relative 'config'
 
 class DB
+  extend Forwardable
+  attr_reader :conn, :db_name, :srid
 
-  attr_reader :conn, :db_name
+  def_delegators :@conn, :exec, :prepare, :exec_prepared, :exec_params
 
-  def initialize(db_name:nil, log:nil)
-    @db_name = db_name || 'christmas_2016'
-    @log = log || Logger.new('/dev/null')
-    @log.progname = 'db'
-    verify
+  def initialize(db_name: nil, srid: 4326, log_level: 'WARN')
+    @db_name = db_name || Config.db_name
+
+    # spatial reference id to use for geometry types and spatial queries
+    # EPSG 4326 = WGS84
+    @srid = srid
+
+    @log = Log.factory(log_level: log_level)
+
+    create_database_if_missing
+
     @conn = PG.connect(dbname: @db_name)
     @conn.type_map_for_results = PG::BasicTypeMapForResults.new(@conn)
   end
 
-  # spatial reference id to use for geometry types and spatial queries
-  # EPSG4326 = WGS84
-  def srid
-    4326
-  end
-
-  def verify
+  # create the requested database if it doesn't exist
+  def create_database_if_missing
     result = PG.connect.exec "select count(*) as db_exists from pg_database where datname = '#{db_name}'"
     if result[0]['db_exists'] == '0'
       `createdb #{db_name}`
       `echo 'create extension postgis' | psql #{db_name}`
-      @log.info "Created database #{db_name}."
+      @log.warn "Created database #{db_name}."
     end
   end
 
-  # TODO there's a proxy/delegate module in ruby. can't remember what it's called, though.
-  def exec(sql)
-    conn.exec sql
-  end
-  def prepare(*args)
-    conn.prepare *args
-  end
-  def exec_prepared(*args)
-    conn.exec_prepared *args
-  end
-  def exec_params(*args)
-    conn.exec_params *args
-  end
-
+  # does the specified table exist in the current database?
+  #
+  # @param [String] table_name
+  # @return [bool]
   def table_exists?(table_name)
-    result = conn.exec "select count(*) as table_exists from pg_tables where tablename = '#{table_name}'"
+    sql = 'select count(*) as table_exists from pg_tables where tablename = $1::varchar'
+    result = conn.exec_params(sql, [table_name])
     result[0]['table_exists'] == 0 ? false : true
   end
+
+  # does the specified column exist in the named table?
+  #
+  # @param [String] table_name
+  # @param [String] column_name
+  # @return [bool]
   def column_exists?(table_name, column_name)
-    result = conn.exec <<-EOF
+    sql = <<-EOF
       SELECT count(*) as column_exists
       FROM information_schema.columns
       WHERE
-        table_name = '#{table_name}'
-        AND column_name = '#{column_name}'
+        table_name = $1::varchar
+        AND column_name = $2::varchar
     EOF
+    result = conn.exec_params(sql, [table_name, column_name])
     result[0]['column_exists'] == 0 ? false : true
   end
-
 end

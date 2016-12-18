@@ -1,10 +1,12 @@
 require 'vcard'
-require 'logger'
-require_relative 'lib/db'
+require_relative '../lib/db'
+require_relative '../lib/log'
 
-$db = DB.new
-log = Logger.new($stdout)
-log.level = Logger::DEBUG
+input_filename = ARGV[0]
+log_level = ARGV[2]
+
+$db = DB.new(log_level: log_level)
+$log = Log.factory(log_level: log_level)
 
 $db.exec 'truncate table people'
 
@@ -35,13 +37,17 @@ def location_id_for(city, postal_code, region, country)
   id
 end
 
-Vcard::Vcard.decode(File.read('data/050_addresses.vcf')).each do |card|
+if !File.exist?(input_filename)
+  raise "Input file #{input_filename} does not exist."
+end
+
+Vcard::Vcard.decode(File.read(input_filename)).each do |card|
   address = card.address
   if address.nil?
-    log.error "nil address: #{card.name.fullname}"
+    $log.error "nil address: #{card.name.fullname}"
     next
   end
-  log.info card.name.fullname
+  $log.debug "Imported '#{card.name.fullname}' from vcard."
 
   city = address.locality.strip.gsub(/,$/, '')
   country = address.country == "" ? "USA" : address.country
